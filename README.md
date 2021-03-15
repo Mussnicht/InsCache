@@ -48,6 +48,48 @@ public class TestController:Controller
 * 可以选择不设置一些配置，例如不写WithRedis，只使用数据库；可以不设置过期时间永久缓存；不写SyncRedis同步；(但Redis/数据库必选其一或都选)
 5. Orm和Redis操作
 * 没有任何具体封装也没必要，用户可以选择使用自己喜欢的方式去写，最终只需返回Task\<T\>。
+# Api测试
+~~~c#
+//对3个key分别请求1000次
+public Task Get1000_3key(string key1,string key2,string key3)
+        {
+            Parallel.For(0, 1000, async i =>
+            {
+                await Get(key1);
+            });
+            Parallel.For(0, 1000, async i =>
+            {
+                await Get(key2);
+            });
+            Parallel.For(0, 1000, async i =>
+            {
+                await Get(key3);
+            });
+            return Task.CompletedTask;
+        }
+~~~
+~~~c#
+//Get方法
+public async Task<user> Get(string key)
+        {
+            return await insCache.Build<user>()
+                                 .SetExpirationTime(10)//缓存10s
+                                 .WithRedis(async () =>
+                                 {
+                                     Debug.WriteLine($"请求Redis，{key}");
+                                     await Task.Yield();
+                                     return null;
+                                 })
+                                 .WithOrm(async () =>
+                                 {
+                                     Debug.WriteLine($"请求数据库，{key}");
+                                     await Task.Yield();
+                                     return new user { Id = "001", Name = key+"Name" };
+                                 })
+                                 .GetValue(key);
+        }
+~~~
+运行api项目，swagger调用Get1000_3key，打开视图-->输出。发现仅分别打印三次“请求redis”、“请求数据库”。并且10s之内再次用相同key调用接口，不会再次请求redis/数据库。
 # 备注
 1. 并不一定需要copy着用，可参考方案自己实现，集思广益，这个帮助类本就是受群里大佬启发而写的。
 2. InCache只做了这件事：用户指定一些列配置和操作，框架协调中间过程，最终达到减少数据库压力的目的。
